@@ -28,14 +28,11 @@ pub fn run(api: XClient, store: ConfigStore, session: TokenSession) -> Result<()
 fn run_inner(
     terminal: &mut ratatui::DefaultTerminal,
     api: XClient,
-    store: ConfigStore,
-    session: TokenSession,
+    mut store: ConfigStore,
+    mut session: TokenSession,
 ) -> Result<()> {
-    let me = {
-        let mut session = session.clone();
-        let mut store = store.clone();
-        api.get_authenticated_user(&mut session, &mut store)?
-    };
+    let (me, auth_changed) = api.get_authenticated_user(&mut session)?;
+    persist_session_if_needed(&mut store, &session, auth_changed)?;
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<WorkerCommand>();
     let (evt_tx, evt_rx) = mpsc::channel::<WorkerEvent>();
@@ -177,7 +174,12 @@ fn worker_loop(
     while let Ok(command) = cmd_rx.recv() {
         match command {
             WorkerCommand::Post(text) => {
-                let result = api.create_post(&mut session, &mut store, &text);
+                let result =
+                    api.create_post(&mut session, &text)
+                        .and_then(|(posted, auth_changed)| {
+                            persist_session_if_needed(&mut store, &session, auth_changed)?;
+                            Ok(posted)
+                        });
                 let _ = evt_tx.send(WorkerEvent::Posted(result));
             }
         }
@@ -204,4 +206,16 @@ enum WorkerCommand {
 
 enum WorkerEvent {
     Posted(Result<CreatePostResult>),
+}
+
+fn persist_session_if_needed(
+    store: &mut ConfigStore,
+    session: &TokenSession,
+    auth_changed: bool,
+) -> Result<()> {
+    if auth_changed {
+        store.persist_auth(session.export())?;
+    }
+
+    Ok(())
 }

@@ -7,7 +7,6 @@ use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::TokenSession;
-use crate::config::ConfigStore;
 
 #[derive(Debug, Clone)]
 pub struct XClient {
@@ -32,29 +31,27 @@ impl XClient {
     pub fn get_authenticated_user(
         &self,
         session: &mut TokenSession,
-        store: &mut ConfigStore,
-    ) -> Result<AuthenticatedUser> {
-        let response = self.send_with_refresh(session, store, |client, token| {
+    ) -> Result<(AuthenticatedUser, bool)> {
+        let (response, auth_changed) = self.send_with_refresh(session, |client, token| {
             client
                 .request(Method::GET, self.url("/2/users/me"))
                 .query(&[("user.fields", "created_at,verified")])
                 .header(AUTHORIZATION, bearer_header(token))
         })?;
 
-        parse_json::<UserEnvelope>(response).map(|payload| payload.data)
+        parse_json::<UserEnvelope>(response).map(|payload| (payload.data, auth_changed))
     }
 
     pub fn create_post(
         &self,
         session: &mut TokenSession,
-        store: &mut ConfigStore,
         text: &str,
-    ) -> Result<CreatePostResult> {
+    ) -> Result<(CreatePostResult, bool)> {
         let body = CreatePostBody {
             text: text.to_string(),
         };
 
-        let response = self.send_with_refresh(session, store, |client, token| {
+        let (response, auth_changed) = self.send_with_refresh(session, |client, token| {
             client
                 .request(Method::POST, self.url("/2/tweets"))
                 .header(AUTHORIZATION, bearer_header(token))
@@ -64,37 +61,35 @@ impl XClient {
         let rate_limit = rate_limit_from_headers(response.headers());
         let payload = parse_json::<CreatePostEnvelope>(response)?;
 
-        Ok(CreatePostResult {
-            id: payload.data.id,
-            text: payload.data.text,
-            rate_limit,
-        })
+        Ok((
+            CreatePostResult {
+                id: payload.data.id,
+                text: payload.data.text,
+                rate_limit,
+            },
+            auth_changed,
+        ))
     }
 
     fn send_with_refresh<F>(
         &self,
         session: &mut TokenSession,
-        store: &mut ConfigStore,
         request_builder: F,
-    ) -> Result<Response>
+    ) -> Result<(Response, bool)>
     where
         F: Fn(&Client, &str) -> RequestBuilder,
     {
-        if session.refresh_if_needed(&self.http, &self.base_url)? {
-            store.update_auth(session.export());
-            store.save()?;
-        }
+        let mut auth_changed = session.refresh_if_needed(&self.http, &self.base_url)?;
 
         let response = request_builder(&self.http, session.access_token()).send()?;
         if response.status() != reqwest::StatusCode::UNAUTHORIZED || !session.can_refresh() {
-            return ensure_success(response);
+            return ensure_success(response).map(|response| (response, auth_changed));
         }
 
         session.refresh(&self.http, &self.base_url)?;
-        store.update_auth(session.export());
-        store.save()?;
+        auth_changed = true;
         let retry = request_builder(&self.http, session.access_token()).send()?;
-        ensure_success(retry)
+        ensure_success(retry).map(|response| (response, auth_changed))
     }
 
     fn url(&self, path: &str) -> String {

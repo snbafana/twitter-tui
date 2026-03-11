@@ -60,9 +60,7 @@ fn main() -> Result<()> {
         } => {
             let client_id = client_id
                 .or_else(|| store.settings().auth.client_id.clone())
-                .ok_or_else(|| {
-                    anyhow::anyhow!("missing client_id; pass --client-id or set X_CLIENT_ID")
-                })?;
+                .ok_or_else(|| anyhow::anyhow!("missing client_id; pass --client-id"))?;
             let client_secret =
                 client_secret.or_else(|| store.settings().auth.client_secret.clone());
             let auth_config = auth::login_with_pkce(
@@ -72,11 +70,11 @@ fn main() -> Result<()> {
                 store.settings().api.timeout_ms,
                 print_url,
             )?;
-            store.update_auth(auth_config);
-            store.save()?;
+            store.persist_auth(auth_config)?;
 
             let mut session = TokenSession::from_auth_config(store.settings().auth.clone())?;
-            let me = api.get_authenticated_user(&mut session, &mut store)?;
+            let (me, auth_changed) = api.get_authenticated_user(&mut session)?;
+            persist_session_if_needed(&mut store, &session, auth_changed)?;
             println!("login complete for @{} ({})", me.username, me.id);
             if let Some(expires_at) = session.token_expires_at() {
                 println!("access token expires at: {expires_at}");
@@ -84,7 +82,8 @@ fn main() -> Result<()> {
         }
         Command::Doctor => {
             let mut session = TokenSession::from_auth_config(store.settings().auth.clone())?;
-            let me = api.get_authenticated_user(&mut session, &mut store)?;
+            let (me, auth_changed) = api.get_authenticated_user(&mut session)?;
+            persist_session_if_needed(&mut store, &session, auth_changed)?;
             println!("authenticated as @{} ({})", me.username, me.id);
             println!("name: {}", me.name);
             if let Some(expires_at) = session.token_expires_at() {
@@ -96,7 +95,8 @@ fn main() -> Result<()> {
         Command::Post { text } => {
             let mut session = TokenSession::from_auth_config(store.settings().auth.clone())?;
             let text = text.join(" ");
-            let posted = api.create_post(&mut session, &mut store, &text)?;
+            let (posted, auth_changed) = api.create_post(&mut session, &text)?;
+            persist_session_if_needed(&mut store, &session, auth_changed)?;
             println!("posted {}: {}", posted.id, posted.text);
             if let Some(rate_limit) = posted.rate_limit {
                 println!(
@@ -109,6 +109,18 @@ fn main() -> Result<()> {
             let session = TokenSession::from_auth_config(store.settings().auth.clone())?;
             tui::run(api, store, session)?;
         }
+    }
+
+    Ok(())
+}
+
+fn persist_session_if_needed(
+    store: &mut ConfigStore,
+    session: &TokenSession,
+    auth_changed: bool,
+) -> Result<()> {
+    if auth_changed {
+        store.persist_auth(session.export())?;
     }
 
     Ok(())

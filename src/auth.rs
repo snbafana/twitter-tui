@@ -31,10 +31,10 @@ impl TokenSession {
     pub fn from_auth_config(config: AuthConfig) -> Result<Self> {
         let client_id = config
             .client_id
-            .ok_or_else(|| anyhow!("missing client_id; set X_CLIENT_ID or auth.client_id"))?;
-        let access_token = config.access_token.ok_or_else(|| {
-            anyhow!("missing access_token; set X_ACCESS_TOKEN or auth.access_token")
-        })?;
+            .ok_or_else(|| anyhow!("missing client_id; run `login` first"))?;
+        let access_token = config
+            .access_token
+            .ok_or_else(|| anyhow!("missing access_token; run `login` first"))?;
 
         Ok(Self {
             client_id,

@@ -12,7 +12,11 @@ Minimal terminal composer for the current X API v2.
 
 ## Configuration
 
-The app reads `~/.config/twitter-tui/config.toml` by default. Override with `TWITTER_TUI_CONFIG`.
+On macOS, the app stores credentials in:
+
+```text
+~/Library/Application Support/com.codex.twitter-tui/config.toml
+```
 
 ```toml
 [api]
@@ -27,16 +31,6 @@ refresh_token = "optional-refresh-token"
 token_expires_at = 2026-03-11T22:00:00Z
 ```
 
-Environment variables override file values:
-
-- `X_CLIENT_ID`
-- `X_CLIENT_SECRET`
-- `X_ACCESS_TOKEN`
-- `X_REFRESH_TOKEN`
-- `X_TOKEN_EXPIRES_AT`
-- `X_API_BASE_URL`
-- `X_HTTP_TIMEOUT_MS`
-
 ## Full setup flow
 
 You cannot complete the entire setup from the terminal alone. X requires app creation and OAuth configuration in the web-based Developer Console first.
@@ -47,7 +41,7 @@ You cannot complete the entire setup from the terminal alone. X requires app cre
 2. Create or open your developer account.
 3. Create a new app.
 4. Enable OAuth 2.0 for that app.
-5. Choose a public/native-style app configuration.
+5. Copy the app's `Client ID`. If X also issued a `Client Secret` for your app, keep that too.
 6. Add this callback URL exactly:
 
 ```text
@@ -60,8 +54,6 @@ http://127.0.0.1:8787/callback
 tweet.read tweet.write users.read offline.access
 ```
 
-8. Copy the app's `Client ID`.
-
 `offline.access` matters because it allows the app to receive a refresh token, so you do not have to re-authenticate every time the access token expires.
 
 ### 2. Open this project locally
@@ -73,8 +65,10 @@ cd /Users/snbafana/Documents/personal/workspace/twitter-tui
 ### 3. Run login
 
 ```bash
-cargo run -- login --client-id YOUR_CLIENT_ID
+cargo run -- login --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
 ```
+
+If your app does not use a client secret, omit `--client-secret`.
 
 What happens next:
 
@@ -84,7 +78,7 @@ What happens next:
 4. You sign in and approve your own app.
 5. X redirects back to `http://127.0.0.1:8787/callback`.
 6. The app exchanges the authorization code for an `access_token` and optional `refresh_token`.
-7. The app saves the token bundle to `~/.config/twitter-tui/config.toml`.
+7. The app saves the token bundle to `~/Library/Application Support/com.codex.twitter-tui/config.toml`.
 
 ### 4. Verify the login
 
@@ -124,19 +118,3 @@ cargo run -- doctor
 cargo run -- post "hello from the terminal"
 cargo run -- compose
 ```
-
-## Login flow
-
-The easiest supported path is:
-
-```bash
-cargo run -- login --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
-```
-
-Before running that command, configure this callback URL in your X app:
-
-```text
-http://127.0.0.1:8787/callback
-```
-
-The app will open your browser, complete OAuth 2.0 PKCE, save the token bundle locally, and then you can use `doctor`, `post`, or `compose`.
