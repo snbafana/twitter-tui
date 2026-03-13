@@ -12,11 +12,13 @@ use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph};
-use tui_textarea::TextArea;
+use tui_textarea::{CursorMove, TextArea};
 
 use crate::api::{CreatePostResult, XClient};
 use crate::auth::TokenSession;
 use crate::config::ConfigStore;
+
+const RAW_CHAR_LIMIT: usize = 280;
 
 pub fn run(api: XClient, store: ConfigStore, session: TokenSession) -> Result<()> {
     let mut terminal = setup_terminal()?;
@@ -38,14 +40,12 @@ fn run_inner(
     let (evt_tx, evt_rx) = mpsc::channel::<WorkerEvent>();
     std::thread::spawn(move || worker_loop(api, store, session, cmd_rx, evt_tx));
 
-    let mut textarea = TextArea::default();
-    textarea.set_block(Block::default().borders(Borders::ALL).title("Compose"));
-    textarea.set_cursor_line_style(Style::default());
-    textarea.set_placeholder_text("Write a post. F5 sends. Esc quits.");
+    let mut textarea = new_textarea();
 
     let mut footer = format!("authenticated as @{}", me.username);
     let mut last_post_id = String::new();
     let mut pending = false;
+    let mut wrap_width = 1usize;
 
     loop {
         while let Ok(event) = evt_rx.try_recv() {
@@ -54,9 +54,7 @@ fn run_inner(
                     footer = format!("posted {} successfully", posted.id);
                     last_post_id = posted.id;
                     pending = false;
-                    textarea = TextArea::default();
-                    textarea.set_block(Block::default().borders(Borders::ALL).title("Compose"));
-                    textarea.set_placeholder_text("Write a post. F5 sends. Esc quits.");
+                    textarea = new_textarea();
                 }
                 WorkerEvent::Posted(Err(err)) => {
                     footer = format!("post failed: {err}");
@@ -75,20 +73,36 @@ fn run_inner(
                 ])
                 .split(frame.area());
 
+            wrap_width = areas[0].width.saturating_sub(2).max(1) as usize;
             frame.render_widget(&textarea, areas[0]);
-            let (cursor_x, cursor_y) = textarea.cursor();
-            frame.set_cursor_position(Position::new(cursor_x as u16, cursor_y as u16));
+            let (cursor_row, cursor_col) = textarea.cursor();
+            frame.set_cursor_position(Position::new(cursor_col as u16, cursor_row as u16));
 
             let body = textarea.lines().join("\n");
-            let status_color = if pending { Color::Yellow } else { Color::Green };
+            let raw_count = body.chars().count();
+            let remaining = RAW_CHAR_LIMIT as isize - raw_count as isize;
+            let status_color = if pending {
+                Color::Yellow
+            } else if remaining < 0 {
+                Color::Red
+            } else if remaining < 20 {
+                Color::Yellow
+            } else {
+                Color::Green
+            };
             let meta = Paragraph::new(Line::from(format!(
-                "@{}  {} chars  {}",
+                "@{}  {} raw chars  {}  {}",
                 me.username,
-                body.chars().count(),
+                raw_count,
+                if remaining >= 0 {
+                    format!("{remaining} left")
+                } else {
+                    format!("{} over", remaining.abs())
+                },
                 if pending {
                     "sending..."
                 } else {
-                    "F5 send | Esc quit"
+                    "F5 send | Ctrl-L clear | Esc/Ctrl-C quit"
                 }
             )))
             .style(Style::default().fg(status_color));
@@ -112,7 +126,14 @@ fn run_inner(
             continue;
         };
 
-        if handle_global_keys(&mut textarea, key, &mut pending, &cmd_tx, &mut footer)? {
+        if handle_global_keys(
+            &mut textarea,
+            key,
+            &mut pending,
+            &cmd_tx,
+            &mut footer,
+            wrap_width,
+        )? {
             break;
         }
     }
@@ -126,9 +147,10 @@ fn handle_global_keys(
     pending: &mut bool,
     cmd_tx: &mpsc::Sender<WorkerCommand>,
     footer: &mut String,
+    wrap_width: usize,
 ) -> Result<bool> {
     match (key.code, key.modifiers) {
-        (KeyCode::Esc, _) => return Ok(true),
+        (KeyCode::Esc, _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => return Ok(true),
         (KeyCode::F(5), _) => {
             if *pending {
                 *footer = "request already in flight".to_string();
@@ -150,17 +172,17 @@ fn handle_global_keys(
             return Ok(false);
         }
         (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
-            textarea.delete_line_by_end();
-            *textarea = TextArea::default();
-            textarea.set_block(Block::default().borders(Borders::ALL).title("Compose"));
-            textarea.set_placeholder_text("Write a post. F5 sends. Esc quits.");
+            *textarea = new_textarea();
             *footer = "composer cleared".to_string();
             return Ok(false);
         }
         _ => {}
     }
 
-    textarea.input(key);
+    let modified = textarea.input(key);
+    if modified {
+        soft_wrap_tail(textarea, wrap_width);
+    }
     Ok(false)
 }
 
@@ -218,4 +240,27 @@ fn persist_session_if_needed(
     }
 
     Ok(())
+}
+
+fn new_textarea() -> TextArea<'static> {
+    let mut textarea = TextArea::default();
+    textarea.set_block(Block::default().borders(Borders::ALL).title("Compose"));
+    textarea.set_cursor_line_style(Style::default());
+    textarea.set_placeholder_text("Write a post. F5 sends. Esc quits.");
+    textarea
+}
+
+fn soft_wrap_tail(textarea: &mut TextArea<'_>, wrap_width: usize) {
+    let (row, col) = textarea.cursor();
+    let Some(line) = textarea.lines().get(row) else {
+        return;
+    };
+
+    let line_len = line.chars().count();
+    if wrap_width == 0 || line_len <= wrap_width || col != line_len {
+        return;
+    }
+
+    textarea.move_cursor(CursorMove::Back);
+    textarea.insert_newline();
 }
