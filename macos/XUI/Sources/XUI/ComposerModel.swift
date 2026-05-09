@@ -147,7 +147,7 @@ final class ComposerModel: ObservableObject {
             throw XAPIError.unsupportedImage("X supports up to 4 images per post.")
         }
         attachedImages.append(image)
-        status = .idle("Attached \(image.filename)")
+        status = .idle("Attached \(image.filename) · \(image.sizeLabel)")
     }
 
     func applyTextStyle(_ style: ComposerTextStyle) {

@@ -49,7 +49,7 @@ Expected first-run state:
 - `Log In` should fail locally until a Client ID is configured; it should not open a browser with missing setup.
 - `Send` stays disabled until there is text and a valid token.
 
-Text styling uses Unicode styled characters because X post text is plain text, not Markdown or rich text. Image posting follows the X API media flow: upload the image to `POST /2/media/upload`, then attach the returned media ID to `POST /2/tweets`.
+Text styling uses Unicode styled characters because X post text is plain text, not Markdown or rich text. Image posting follows the X API media flow: upload the image to `POST /2/media/upload`, then attach the returned media ID to `POST /2/tweets`. Large screenshots are normalized locally as JPEG and scaled down when needed before upload.
 
 Live OAuth validation still requires a real X developer app configured with `http://127.0.0.1:8787/callback` and scopes `tweet.read tweet.write users.read offline.access`.
 
@@ -59,6 +59,7 @@ Live OAuth validation still requires a real X developer app configured with `htt
 - Native text editor, status row, character count, send/clear commands.
 - Unicode text styling controls for bold, italic, and serif draft transforms.
 - Image picker and drag/drop attachment for JPG, PNG, WebP, BMP, and TIFF files up to 5 MB.
+- Oversized screenshots are recompressed locally instead of being rejected immediately.
 - Draft image tray with up to 4 thumbnails and per-image `x` removal.
 - Minimal Settings sheet for OAuth Client ID, optional Client Secret, API base URL, and callback URL.
 - Client Secret and OAuth token slots are Keychain-backed.

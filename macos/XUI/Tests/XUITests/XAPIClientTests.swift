@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import XUI
@@ -124,6 +125,20 @@ final class XAPIClientTests: XCTestCase {
         )
 
         XCTAssertEqual(message, "Forbidden: Missing tweet.write")
+    }
+
+    func testDroppedImageConvertsToUploadableJPEG() throws {
+        let image = NSImage(size: NSSize(width: 6400, height: 3600))
+        image.lockFocus()
+        NSColor.systemBlue.setFill()
+        NSRect(x: 0, y: 0, width: 6400, height: 3600).fill()
+        image.unlockFocus()
+
+        let attached = try AttachedImage.load(from: image, filename: "screenshot.png")
+
+        XCTAssertEqual(attached.filename, "screenshot.png")
+        XCTAssertEqual(attached.mediaType, "image/jpeg")
+        XCTAssertLessThanOrEqual(attached.data.count, AttachedImage.maxImageBytes)
     }
 
     private func makeSession() -> URLSession {

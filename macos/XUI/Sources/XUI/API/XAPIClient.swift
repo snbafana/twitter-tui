@@ -106,6 +106,8 @@ struct UploadedMedia: Decodable, Equatable {
 
 struct AttachedImage: Identifiable, Equatable {
     static let maxImageBytes = 5 * 1024 * 1024
+    private static let maxPixelDimension: CGFloat = 4096
+    private static let jpegQualities: [CGFloat] = [0.92, 0.84, 0.76, 0.68, 0.60, 0.52]
 
     var id = UUID()
     var filename: String
@@ -121,24 +123,59 @@ struct AttachedImage: Identifiable, Equatable {
 
     static func load(from url: URL) throws -> AttachedImage {
         let data = try Data(contentsOf: url)
-        return try load(data: data, filename: url.lastPathComponent, mediaType: mediaType(for: url))
+        let mediaType = try mediaType(for: url)
+        if data.count <= maxImageBytes {
+            return AttachedImage(filename: url.lastPathComponent, data: data, mediaType: mediaType)
+        }
+        guard let image = NSImage(data: data) else {
+            throw XAPIError.unsupportedImage("Image could not be read for compression.")
+        }
+        return try compressedImage(from: image, filename: compressedFilename(from: url))
     }
 
     static func load(from image: NSImage, filename: String) throws -> AttachedImage {
-        guard let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let data = bitmap.representation(using: .png, properties: [:])
-        else {
-            throw XAPIError.unsupportedImage("Dropped image could not be converted to PNG.")
-        }
-        return try load(data: data, filename: filename, mediaType: "image/png")
+        try compressedImage(from: image, filename: filename)
     }
 
-    private static func load(data: Data, filename: String, mediaType: String) throws -> AttachedImage {
-        guard data.count <= maxImageBytes else {
-            throw XAPIError.unsupportedImage("Images must be 5 MB or smaller for X upload.")
+    private static func compressedImage(from image: NSImage, filename: String) throws -> AttachedImage {
+        guard let bitmap = bitmap(for: image) else {
+            throw XAPIError.unsupportedImage("Image could not be converted for upload.")
         }
-        return AttachedImage(filename: filename, data: data, mediaType: mediaType)
+        for quality in jpegQualities {
+            guard let data = bitmap.representation(using: .jpeg, properties: [.compressionFactor: quality]) else {
+                continue
+            }
+            if data.count <= maxImageBytes {
+                return AttachedImage(filename: filename, data: data, mediaType: "image/jpeg")
+            }
+        }
+        throw XAPIError.unsupportedImage("Image could not be compressed below 5 MB for X upload.")
+    }
+
+    private static func bitmap(for image: NSImage) -> NSBitmapImageRep? {
+        let sourceSize = image.size
+        guard sourceSize.width > 0, sourceSize.height > 0 else {
+            return nil
+        }
+
+        let scale = min(1, maxPixelDimension / max(sourceSize.width, sourceSize.height))
+        let targetSize = NSSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
+        let rendered = NSImage(size: targetSize)
+        rendered.lockFocus()
+        NSColor.white.setFill()
+        NSRect(origin: .zero, size: targetSize).fill()
+        image.draw(in: NSRect(origin: .zero, size: targetSize), from: .zero, operation: .copy, fraction: 1)
+        rendered.unlockFocus()
+
+        guard let tiff = rendered.tiffRepresentation else {
+            return nil
+        }
+        return NSBitmapImageRep(data: tiff)
+    }
+
+    private static func compressedFilename(from url: URL) -> String {
+        let base = url.deletingPathExtension().lastPathComponent
+        return "\(base)-xui.jpg"
     }
 
     private static func mediaType(for url: URL) throws -> String {
