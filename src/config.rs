@@ -7,21 +7,12 @@ use chrono::{DateTime, Utc};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
     pub api: ApiConfig,
     #[serde(default)]
     pub auth: AuthConfig,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            api: ApiConfig::default(),
-            auth: AuthConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,7 +104,7 @@ fn write_private_file(path: &Path, contents: &str) -> Result<()> {
             .with_context(|| format!("failed to open {}", path.display()))?;
         file.write_all(contents.as_bytes())
             .with_context(|| format!("failed to write {}", path.display()))?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(unix))]

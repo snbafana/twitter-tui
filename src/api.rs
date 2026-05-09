@@ -167,17 +167,17 @@ fn ensure_success(response: Response) -> Result<Response> {
     let status = response.status();
     let body = response.text().unwrap_or_default();
 
-    if let Ok(api_errors) = serde_json::from_str::<ApiErrors>(&body) {
-        if let Some(error) = api_errors.errors.into_iter().next() {
-            let title = error.title.unwrap_or_else(|| "X API error".to_string());
-            let detail = error.detail.unwrap_or_else(|| body.clone());
-            let code = error
-                .status
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| status.as_u16().to_string());
-            let kind = error.type_url.unwrap_or_default();
-            bail!("{title} ({code}) {kind} {detail}");
-        }
+    if let Ok(api_errors) = serde_json::from_str::<ApiErrors>(&body)
+        && let Some(error) = api_errors.errors.into_iter().next()
+    {
+        let title = error.title.unwrap_or_else(|| "X API error".to_string());
+        let detail = error.detail.unwrap_or_else(|| body.clone());
+        let code = error
+            .status
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| status.as_u16().to_string());
+        let kind = error.type_url.unwrap_or_default();
+        bail!("{title} ({code}) {kind} {detail}");
     }
 
     Err(anyhow!("request failed with {}: {}", status, body))

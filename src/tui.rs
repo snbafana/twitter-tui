@@ -8,11 +8,12 @@ use ratatui::crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use ratatui::layout::Position;
-use ratatui::layout::{Constraint, Direction, Layout};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use tui_textarea::{CursorMove, TextArea};
+use unicode_width::UnicodeWidthChar;
 
 use crate::api::{CreatePostResult, XClient};
 use crate::auth::TokenSession;
@@ -45,7 +46,7 @@ fn run_inner(
     let mut footer = format!("authenticated as @{}", me.username);
     let mut last_post_id = String::new();
     let mut pending = false;
-    let mut wrap_width = 1usize;
+    let mut composer_width = 1usize;
 
     loop {
         while let Ok(event) = evt_rx.try_recv() {
@@ -64,58 +65,24 @@ fn run_inner(
         }
 
         terminal.draw(|frame| {
-            let areas = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(6),
-                    Constraint::Length(2),
-                    Constraint::Length(2),
-                ])
-                .split(frame.area());
+            let layout = composer_layout(frame.area());
+            composer_width = text_width(layout.composer);
 
-            wrap_width = areas[0].width.saturating_sub(2).max(1) as usize;
-            frame.render_widget(&textarea, areas[0]);
-            let (cursor_row, cursor_col) = textarea.cursor();
-            frame.set_cursor_position(Position::new(cursor_col as u16, cursor_row as u16));
+            frame.render_widget(&textarea, layout.composer);
+            if let Some(cursor_position) = cursor_position_in_area(&textarea, layout.composer) {
+                frame.set_cursor_position(cursor_position);
+            }
 
-            let body = textarea.lines().join("\n");
-            let raw_count = body.chars().count();
-            let remaining = RAW_CHAR_LIMIT as isize - raw_count as isize;
-            let status_color = if pending {
-                Color::Yellow
-            } else if remaining < 0 {
-                Color::Red
-            } else if remaining < 20 {
-                Color::Yellow
-            } else {
-                Color::Green
-            };
-            let meta = Paragraph::new(Line::from(format!(
-                "@{}  {} raw chars  {}  {}",
-                me.username,
-                raw_count,
-                if remaining >= 0 {
-                    format!("{remaining} left")
-                } else {
-                    format!("{} over", remaining.abs())
-                },
-                if pending {
-                    "sending..."
-                } else {
-                    "F5 send | Ctrl-L clear | Esc/Ctrl-C quit"
-                }
-            )))
-            .style(Style::default().fg(status_color));
+            let status =
+                composer_status(&me.username, textarea.lines(), pending, layout.status.width);
+            let meta = Paragraph::new(Line::from(status.text))
+                .style(Style::default().fg(status.color))
+                .wrap(Wrap { trim: true });
+            let footer_widget =
+                Paragraph::new(footer_text(&footer, &last_post_id)).wrap(Wrap { trim: true });
 
-            let footer_text = if last_post_id.is_empty() {
-                footer.clone()
-            } else {
-                format!("{footer} | last post id: {last_post_id}")
-            };
-            let footer_widget = Paragraph::new(footer_text);
-
-            frame.render_widget(meta, areas[1]);
-            frame.render_widget(footer_widget, areas[2]);
+            frame.render_widget(meta, layout.status);
+            frame.render_widget(footer_widget, layout.footer);
         })?;
 
         if !event::poll(Duration::from_millis(100))? {
@@ -132,7 +99,7 @@ fn run_inner(
             &mut pending,
             &cmd_tx,
             &mut footer,
-            wrap_width,
+            composer_width,
         )? {
             break;
         }
@@ -180,7 +147,7 @@ fn handle_global_keys(
     }
 
     let modified = textarea.input(key);
-    if modified {
+    if modified && should_soft_wrap(key) {
         soft_wrap_tail(textarea, wrap_width);
     }
     Ok(false)
@@ -250,17 +217,279 @@ fn new_textarea() -> TextArea<'static> {
     textarea
 }
 
-fn soft_wrap_tail(textarea: &mut TextArea<'_>, wrap_width: usize) {
-    let (row, col) = textarea.cursor();
-    let Some(line) = textarea.lines().get(row) else {
-        return;
+struct ComposerLayout {
+    composer: Rect,
+    status: Rect,
+    footer: Rect,
+}
+
+struct ComposerStatus {
+    text: String,
+    color: Color,
+}
+
+fn composer_layout(area: Rect) -> ComposerLayout {
+    let areas = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(3),
+            Constraint::Length(1),
+            Constraint::Length(2),
+        ])
+        .split(area);
+
+    ComposerLayout {
+        composer: areas[0],
+        status: areas[1],
+        footer: areas[2],
+    }
+}
+
+fn text_width(area: Rect) -> usize {
+    area.width.saturating_sub(2).max(1) as usize
+}
+
+fn composer_status(
+    username: &str,
+    lines: &[String],
+    pending: bool,
+    available_width: u16,
+) -> ComposerStatus {
+    let raw_count = lines.join("\n").chars().count();
+    let remaining = RAW_CHAR_LIMIT as isize - raw_count as isize;
+    let color = if pending {
+        Color::Yellow
+    } else if remaining < 0 {
+        Color::Red
+    } else if remaining < 20 {
+        Color::Yellow
+    } else {
+        Color::Green
+    };
+    let remaining_text = if remaining >= 0 {
+        format!("{remaining} left")
+    } else {
+        format!("{} over", remaining.abs())
+    };
+    let action_text = if pending {
+        "sending..."
+    } else {
+        "F5 send | Ctrl-L clear | Esc/Ctrl-C quit"
+    };
+    let text = if available_width < 34 {
+        format!("{raw_count}/{RAW_CHAR_LIMIT}  {remaining_text}")
+    } else if available_width < 58 {
+        format!("@{username}  {raw_count}/{RAW_CHAR_LIMIT}  {remaining_text}  {action_text}")
+    } else {
+        format!("@{username}  {raw_count} raw chars  {remaining_text}  {action_text}")
     };
 
-    let line_len = line.chars().count();
-    if wrap_width == 0 || line_len <= wrap_width || col != line_len {
+    ComposerStatus { text, color }
+}
+
+fn footer_text(footer: &str, last_post_id: &str) -> String {
+    if last_post_id.is_empty() {
+        footer.to_string()
+    } else {
+        format!("{footer} | last post id: {last_post_id}")
+    }
+}
+
+fn soft_wrap_tail(textarea: &mut TextArea<'_>, wrap_width: usize) {
+    if wrap_width == 0 {
         return;
     }
 
-    textarea.move_cursor(CursorMove::Back);
-    textarea.insert_newline();
+    loop {
+        let (row, col) = textarea.cursor();
+        let Some(line) = textarea.lines().get(row) else {
+            return;
+        };
+
+        let line_len = line.chars().count();
+        if col != line_len || display_width(line) <= wrap_width {
+            return;
+        }
+
+        let Some(split_col) = wrap_split_col(line, wrap_width) else {
+            return;
+        };
+        if split_col == 0 || split_col >= line_len {
+            return;
+        }
+
+        textarea.move_cursor(CursorMove::Jump(row as u16, split_col as u16));
+        textarea.insert_newline();
+        textarea.move_cursor(CursorMove::End);
+    }
+}
+
+fn should_soft_wrap(key: KeyEvent) -> bool {
+    match key.code {
+        KeyCode::Char(_) => !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT),
+        KeyCode::Tab => true,
+        _ => false,
+    }
+}
+
+fn cursor_position_in_area(textarea: &TextArea<'_>, area: Rect) -> Option<Position> {
+    let inner = textarea.block().map_or(area, |block| block.inner(area));
+    if inner.width == 0 || inner.height == 0 {
+        return None;
+    }
+
+    let (row, col) = textarea.cursor();
+    let line = textarea.lines().get(row)?;
+    let x = inner.x.saturating_add(
+        display_width_up_to(line, col).min(inner.width.saturating_sub(1) as usize) as u16,
+    );
+    let y = inner
+        .y
+        .saturating_add((row as u16).min(inner.height.saturating_sub(1)));
+    Some(Position::new(x, y))
+}
+
+fn wrap_split_col(line: &str, wrap_width: usize) -> Option<usize> {
+    let mut width = 0usize;
+    let mut col = 0usize;
+
+    for ch in line.chars() {
+        let ch_width = ch.width().unwrap_or(0);
+        if width + ch_width > wrap_width {
+            return Some(col);
+        }
+        width += ch_width;
+        col += 1;
+    }
+
+    Some(col)
+}
+
+fn display_width(line: &str) -> usize {
+    display_width_up_to(line, line.chars().count())
+}
+
+fn display_width_up_to(line: &str, col: usize) -> usize {
+    line.chars()
+        .take(col)
+        .map(|ch| ch.width().unwrap_or(0))
+        .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wraps_ascii_tail_and_keeps_cursor_after_wrapped_text() {
+        let mut textarea = TextArea::default();
+        textarea.insert_str("hello!");
+
+        soft_wrap_tail(&mut textarea, 5);
+
+        assert_eq!(textarea.lines(), ["hello", "!"]);
+        assert_eq!(textarea.cursor(), (1, 1));
+    }
+
+    #[test]
+    fn wraps_multi_cell_tail_using_display_width() {
+        let mut textarea = TextArea::default();
+        textarea.insert_str("abcd😄");
+
+        soft_wrap_tail(&mut textarea, 5);
+
+        assert_eq!(textarea.lines(), ["abcd", "😄"]);
+        assert_eq!(textarea.cursor(), (1, 1));
+    }
+
+    #[test]
+    fn wraps_repeatedly_when_inserted_tail_is_still_too_wide() {
+        let mut textarea = TextArea::default();
+        textarea.insert_str("abcdefghi");
+
+        soft_wrap_tail(&mut textarea, 3);
+
+        assert_eq!(textarea.lines(), ["abc", "def", "ghi"]);
+        assert_eq!(textarea.cursor(), (2, 3));
+    }
+
+    #[test]
+    fn skips_wrap_when_cursor_is_not_at_line_end() {
+        let mut textarea = TextArea::from(["abcdef"]);
+        textarea.move_cursor(CursorMove::Jump(0, 3));
+
+        soft_wrap_tail(&mut textarea, 4);
+
+        assert_eq!(textarea.lines(), ["abcdef"]);
+        assert_eq!(textarea.cursor(), (0, 3));
+    }
+
+    #[test]
+    fn clamps_cursor_inside_bordered_text_area() {
+        let mut textarea = new_textarea();
+        textarea.insert_str("hello");
+
+        let position = cursor_position_in_area(
+            &textarea,
+            Rect {
+                x: 10,
+                y: 4,
+                width: 7,
+                height: 4,
+            },
+        )
+        .expect("cursor should be visible");
+
+        assert_eq!(position, Position::new(15, 5));
+    }
+
+    #[test]
+    fn status_uses_short_copy_on_narrow_terminals() {
+        let lines = vec!["hello".to_string()];
+
+        let status = composer_status("snbafana", &lines, false, 20);
+
+        assert_eq!(status.text, "5/280  275 left");
+        assert_eq!(status.color, Color::Green);
+    }
+
+    #[test]
+    fn status_warns_when_over_limit() {
+        let lines = vec!["x".repeat(RAW_CHAR_LIMIT + 2)];
+
+        let status = composer_status("snbafana", &lines, false, 80);
+
+        assert!(status.text.contains("2 over"));
+        assert_eq!(status.color, Color::Red);
+    }
+
+    #[test]
+    fn footer_includes_last_post_id_when_present() {
+        assert_eq!(
+            footer_text("posted successfully", "123"),
+            "posted successfully | last post id: 123"
+        );
+    }
+
+    #[test]
+    fn soft_wrap_only_runs_for_text_insertion_keys() {
+        assert!(should_soft_wrap(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::NONE,
+        )));
+        assert!(should_soft_wrap(KeyEvent::new(
+            KeyCode::Tab,
+            KeyModifiers::NONE,
+        )));
+        assert!(!should_soft_wrap(KeyEvent::new(
+            KeyCode::Backspace,
+            KeyModifiers::NONE,
+        )));
+        assert!(!should_soft_wrap(KeyEvent::new(
+            KeyCode::Char('w'),
+            KeyModifiers::CONTROL,
+        )));
+    }
 }
