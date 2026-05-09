@@ -3,11 +3,19 @@ import SwiftUI
 @main
 struct XUIApp: App {
     @StateObject private var model = ComposerModel()
+    @State private var showingSettings = false
 
     var body: some Scene {
         WindowGroup {
-            ComposerView(model: model)
+            ComposerView(model: model) {
+                showingSettings = true
+            }
                 .frame(minWidth: 620, minHeight: 420)
+                .sheet(isPresented: $showingSettings) {
+                    SettingsView(model: model) {
+                        showingSettings = false
+                    }
+                }
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
@@ -24,6 +32,13 @@ struct XUIApp: App {
                     model.clear()
                 }
                 .keyboardShortcut("l", modifiers: [.command])
+
+                Divider()
+
+                Button("Settings") {
+                    showingSettings = true
+                }
+                .keyboardShortcut(",", modifiers: [.command])
             }
         }
 

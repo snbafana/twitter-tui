@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ComposerView: View {
     @ObservedObject var model: ComposerModel
+    var openSettings: () -> Void = {}
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -31,7 +32,7 @@ struct ComposerView: View {
             Spacer()
 
             Button("Settings") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                openSettings()
             }
 
             Button(model.account == nil ? "Log In" : "Refresh") {

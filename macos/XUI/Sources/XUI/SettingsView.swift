@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var model: ComposerModel
+    var close: (() -> Void)?
 
     var body: some View {
         Form {
@@ -33,6 +34,7 @@ struct SettingsView: View {
 
                 Button("Save") {
                     model.saveSettings()
+                    close?()
                 }
 
                 Button("Log In") {
