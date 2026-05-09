@@ -41,9 +41,5 @@ struct XUIApp: App {
                 .keyboardShortcut(",", modifiers: [.command])
             }
         }
-
-        Settings {
-            SettingsView(model: model)
-        }
     }
 }

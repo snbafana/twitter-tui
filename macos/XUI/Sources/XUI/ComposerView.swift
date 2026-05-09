@@ -35,7 +35,7 @@ struct ComposerView: View {
                 openSettings()
             }
 
-            Button(model.account == nil ? "Log In" : "Refresh") {
+            Button("Log In") {
                 Task {
                     await model.login()
                 }

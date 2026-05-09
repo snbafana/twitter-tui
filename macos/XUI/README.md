@@ -43,7 +43,7 @@ Expected first-run state:
 - The main window opens directly to the composer.
 - The app appears as `XUI` in the macOS app switcher and accepts keyboard focus like a normal app.
 - The header says `XUI` and `Bring your own X auth`.
-- `Settings` opens the local OAuth app settings.
+- `Settings` opens the local OAuth app settings; `Done` saves and closes the sheet.
 - `Log In` should fail locally until a Client ID is configured; it should not open a browser with missing setup.
 - `Send` stays disabled until there is text and a valid token.
 
@@ -53,7 +53,7 @@ Live OAuth validation still requires a real X developer app configured with `htt
 
 - Composer-first SwiftUI window.
 - Native text editor, status row, character count, send/clear commands.
-- Settings panel for OAuth Client ID, optional Client Secret, API base URL, and callback URL.
+- Minimal Settings sheet for OAuth Client ID, optional Client Secret, API base URL, and callback URL.
 - Client Secret and OAuth token slots are Keychain-backed.
 - First-run setup validation catches missing Client ID, invalid API base URL, and unsupported callback URLs before opening the browser.
 - Native API client boundary for `GET /2/users/me` and `POST /2/tweets`.
