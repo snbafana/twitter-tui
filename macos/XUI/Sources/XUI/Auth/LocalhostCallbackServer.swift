@@ -85,7 +85,7 @@ private func receiveCallback(host: String, port: Int, timeoutSeconds: Int) throw
     }
 
     let request = String(decoding: buffer.prefix(bytesRead), as: UTF8.self)
-    let payload = try parseCallbackRequest(request)
+    let payload = try LocalhostCallbackParser.parse(request)
     try writeCallbackResponse(payload, to: client)
     if let error = payload.error {
         throw LocalhostCallbackError.authorizationDenied(error, payload.errorDescription ?? "")
@@ -93,31 +93,33 @@ private func receiveCallback(host: String, port: Int, timeoutSeconds: Int) throw
     return payload
 }
 
-private func parseCallbackRequest(_ request: String) throws -> OAuthCallbackPayload {
-    guard let requestLine = request.split(separator: "\r\n", maxSplits: 1).first else {
-        throw LocalhostCallbackError.malformedRequest
-    }
-    let parts = requestLine.split(separator: " ")
-    guard parts.count >= 2 else {
-        throw LocalhostCallbackError.malformedRequest
-    }
+struct LocalhostCallbackParser {
+    static func parse(_ request: String) throws -> OAuthCallbackPayload {
+        guard let requestLine = request.split(separator: "\r\n", maxSplits: 1).first else {
+            throw LocalhostCallbackError.malformedRequest
+        }
+        let parts = requestLine.split(separator: " ")
+        guard parts.count >= 2, parts[0] == "GET", parts[1].hasPrefix("/") else {
+            throw LocalhostCallbackError.malformedRequest
+        }
 
-    guard let url = URL(string: "http://localhost\(parts[1])"),
-          let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-    else {
-        throw LocalhostCallbackError.malformedRequest
+        guard let url = URL(string: "http://localhost\(parts[1])"),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        else {
+            throw LocalhostCallbackError.malformedRequest
+        }
+
+        let values = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        return OAuthCallbackPayload(
+            code: values["code"],
+            state: values["state"],
+            error: values["error"],
+            errorDescription: values["error_description"]
+        )
     }
-
-    let values = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
-        item.value.map { (item.name, $0) }
-    })
-
-    return OAuthCallbackPayload(
-        code: values["code"],
-        state: values["state"],
-        error: values["error"],
-        errorDescription: values["error_description"]
-    )
 }
 
 private func writeCallbackResponse(_ payload: OAuthCallbackPayload, to client: Int32) throws {

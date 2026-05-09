@@ -187,7 +187,7 @@ final class ComposerModel: ObservableObject {
         else {
             return false
         }
-        return expiresAt <= Date().addingTimeInterval(60)
+        return TokenRefreshPolicy.needsRefresh(expiresAt: expiresAt)
     }
 
     private func persistTokens(_ bundle: OAuthTokenBundle) throws {
@@ -246,5 +246,16 @@ enum ComposerStatus: Equatable {
              let .success(message):
             message
         }
+    }
+}
+
+struct TokenRefreshPolicy {
+    static let refreshWindow: TimeInterval = 60
+
+    static func needsRefresh(expiresAt: Date?, now: Date = Date()) -> Bool {
+        guard let expiresAt else {
+            return false
+        }
+        return expiresAt <= now.addingTimeInterval(refreshWindow)
     }
 }

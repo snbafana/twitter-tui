@@ -198,6 +198,13 @@ cd macos/XUI
 swift run
 ```
 
+Validate the native app target with:
+
+```bash
+cd macos/XUI
+swift test
+```
+
 The native app opens directly to the composer. Settings stores the X OAuth Client ID locally, stores the optional Client Secret and OAuth tokens in Keychain, uses the same localhost callback URL as the Rust CLI, and posts through the native `URLSession` API client.
 
 ## Bring-your-own auth

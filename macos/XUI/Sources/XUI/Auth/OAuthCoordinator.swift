@@ -47,7 +47,7 @@ struct OAuthCoordinator {
             let credentials = Data("\(settings.clientID):\(clientSecret)".utf8).base64EncodedString()
             request.setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")
         }
-        request.httpBody = formBody([
+        request.httpBody = FormURLEncoder.encode([
             "refresh_token": refreshToken,
             "grant_type": "refresh_token",
             "client_id": settings.clientID
@@ -123,7 +123,7 @@ struct OAuthCoordinator {
             request.setValue("Basic \(credentials)", forHTTPHeaderField: "Authorization")
         }
 
-        request.httpBody = formBody([
+        request.httpBody = FormURLEncoder.encode([
             "code": code,
             "grant_type": "authorization_code",
             "client_id": settings.clientID,
@@ -151,8 +151,12 @@ struct OAuthCoordinator {
         )
     }
 
-    private func formBody(_ values: [String: String]) -> Data {
+}
+
+struct FormURLEncoder {
+    static func encode(_ values: [String: String]) -> Data {
         let encoded = values
+            .sorted { $0.key < $1.key }
             .map { key, value in
                 "\(key.formURLEncoded)=\(value.formURLEncoded)"
             }
@@ -253,8 +257,8 @@ private extension String {
 
 private extension CharacterSet {
     static let formURLEncodedAllowed: CharacterSet = {
-        var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: ":#[]@!$&'()*+,;=")
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
         return allowed
     }()
 }

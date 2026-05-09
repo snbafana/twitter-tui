@@ -11,6 +11,10 @@ let package = Package(
         .executable(name: "XUI", targets: ["XUI"])
     ],
     targets: [
-        .executableTarget(name: "XUI")
+        .executableTarget(name: "XUI"),
+        .testTarget(
+            name: "XUITests",
+            dependencies: ["XUI"]
+        )
     ]
 )

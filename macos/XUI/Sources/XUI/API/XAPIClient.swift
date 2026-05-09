@@ -38,9 +38,33 @@ struct XAPIClient {
             throw XAPIError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw XAPIError.httpStatus(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            throw XAPIError.httpStatus(http.statusCode, XAPIErrorBody.message(from: data))
         }
         return try JSONDecoder().decode(Response.self, from: data)
+    }
+}
+
+struct XAPIErrorBody {
+    static func message(from data: Data) -> String {
+        guard !data.isEmpty else {
+            return "Empty response body"
+        }
+        if let payload = try? JSONDecoder().decode(XErrorEnvelope.self, from: data) {
+            if let errors = payload.errors, !errors.isEmpty {
+                return errors.map(\.message).joined(separator: "; ")
+            }
+            if let title = payload.title, let detail = payload.detail {
+                return "\(title): \(detail)"
+            }
+            if let detail = payload.detail {
+                return detail
+            }
+            if let title = payload.title {
+                return title
+            }
+        }
+        let raw = String(data: data, encoding: .utf8) ?? "Unreadable response body"
+        return String(raw.prefix(500))
     }
 }
 
@@ -81,5 +105,41 @@ enum XAPIError: Error, LocalizedError {
         case let .httpStatus(status, body):
             "X API request failed with \(status): \(body)"
         }
+    }
+}
+
+private struct XErrorEnvelope: Decodable {
+    var title: String?
+    var detail: String?
+    var errors: [XErrorItem]?
+}
+
+private struct XErrorItem: Decodable {
+    var title: String?
+    var detail: String?
+    var rawMessage: String?
+    var type: String?
+
+    var message: String {
+        if let title, let detail {
+            return "\(title): \(detail)"
+        }
+        if let rawMessage {
+            return rawMessage
+        }
+        if let detail {
+            return detail
+        }
+        if let title {
+            return title
+        }
+        return type ?? "Unknown X API error"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case detail
+        case rawMessage = "message"
+        case type
     }
 }
