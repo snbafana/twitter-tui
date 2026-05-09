@@ -44,6 +44,7 @@ Expected first-run state:
 - The app appears as `XUI` in the macOS app switcher and accepts keyboard focus like a normal app.
 - The header says `XUI` and `Bring your own X auth`.
 - The composer toolbar has text style controls (`B`, `I`, `Serif`) and an `Image` attachment button.
+- Images can also be dragged onto the composer; attached images appear as draft thumbnails with an `x` remove control.
 - `Settings` opens the local OAuth app settings; `Done` saves and closes the sheet.
 - `Log In` should fail locally until a Client ID is configured; it should not open a browser with missing setup.
 - `Send` stays disabled until there is text and a valid token.
@@ -57,7 +58,8 @@ Live OAuth validation still requires a real X developer app configured with `htt
 - Composer-first SwiftUI window.
 - Native text editor, status row, character count, send/clear commands.
 - Unicode text styling controls for bold, italic, and serif draft transforms.
-- Image attachment for JPG, PNG, WebP, BMP, and TIFF files up to 5 MB.
+- Image picker and drag/drop attachment for JPG, PNG, WebP, BMP, and TIFF files up to 5 MB.
+- Draft image tray with up to 4 thumbnails and per-image `x` removal.
 - Minimal Settings sheet for OAuth Client ID, optional Client Secret, API base URL, and callback URL.
 - Client Secret and OAuth token slots are Keychain-backed.
 - First-run setup validation catches missing Client ID, invalid API base URL, and unsupported callback URLs before opening the browser.

@@ -82,18 +82,8 @@ struct ComposerView: View {
             Divider()
                 .frame(height: 18)
 
-            Button(model.attachedImage == nil ? "Image" : "Replace Image") {
+            Button(model.attachedImages.isEmpty ? "Image" : "Add Image") {
                 showingImageImporter = true
-            }
-
-            if let image = model.attachedImage {
-                Text("\(image.filename) · \(image.sizeLabel)")
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Button("Remove") {
-                    model.removeImage()
-                }
             }
 
             Spacer()
@@ -112,37 +102,89 @@ struct ComposerView: View {
     }
 
     private var editor: some View {
-        TextEditor(text: $model.text)
-            .font(.system(.title3, design: .serif))
-            .lineSpacing(4)
-            .scrollContentBackground(.hidden)
-            .padding(18)
-            .focused($composerFocused)
-            .background(isDroppingImage ? Color.accentColor.opacity(0.08) : Color.clear)
-            .onDrop(of: [.image, .fileURL], isTargeted: $isDroppingImage, perform: handleImageDrop)
-            .overlay(alignment: .topLeading) {
-                if model.text.isEmpty {
-                    Text("Write the post.")
-                        .font(.system(.title3, design: .serif))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 26)
-                        .allowsHitTesting(false)
+        VStack(spacing: 0) {
+            TextEditor(text: $model.text)
+                .font(.system(.title3, design: .serif))
+                .lineSpacing(4)
+                .scrollContentBackground(.hidden)
+                .padding(18)
+                .focused($composerFocused)
+                .overlay(alignment: .topLeading) {
+                    if model.text.isEmpty {
+                        Text("Write the post.")
+                            .font(.system(.title3, design: .serif))
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 26)
+                            .allowsHitTesting(false)
+                    }
+                }
+
+            if !model.attachedImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(model.attachedImages) { image in
+                            imageTile(image)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 14)
                 }
             }
-            .overlay {
-                if isDroppingImage {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.accentColor, lineWidth: 2)
-                        .padding(8)
-                    Text("Drop image")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.regularMaterial, in: Capsule())
-                }
+        }
+        .background(isDroppingImage ? Color.accentColor.opacity(0.08) : Color.clear)
+        .onDrop(of: [.image, .fileURL], isTargeted: $isDroppingImage, perform: handleImageDrop)
+        .overlay {
+            if isDroppingImage {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.accentColor, lineWidth: 2)
+                    .padding(8)
+                Text("Drop image")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.regularMaterial, in: Capsule())
             }
+        }
+    }
+
+    private func imageTile(_ image: AttachedImage) -> some View {
+        ZStack(alignment: .topTrailing) {
+            if let preview = NSImage(data: image.data) {
+                Image(nsImage: preview)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.18))
+                    .overlay(Text("Image").foregroundStyle(.secondary))
+            }
+
+            Button {
+                model.removeImage(image)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 20, height: 20)
+                    .background(.black.opacity(0.72), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(5)
+            .help("Remove image")
+        }
+        .frame(width: 112, height: 84)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(alignment: .bottomLeading) {
+            Text(image.sizeLabel)
+                .font(.caption2)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(.black.opacity(0.58), in: Capsule())
+                .padding(5)
+        }
     }
 
     private func handleImageDrop(_ providers: [NSItemProvider]) -> Bool {

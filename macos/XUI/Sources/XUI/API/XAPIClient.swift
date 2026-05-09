@@ -104,9 +104,10 @@ struct UploadedMedia: Decodable, Equatable {
     }
 }
 
-struct AttachedImage: Equatable {
+struct AttachedImage: Identifiable, Equatable {
     static let maxImageBytes = 5 * 1024 * 1024
 
+    var id = UUID()
     var filename: String
     var data: Data
     var mediaType: String

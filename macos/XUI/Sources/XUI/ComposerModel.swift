@@ -12,7 +12,7 @@ final class ComposerModel: ObservableObject {
     @Published var account: AccountSummary?
     @Published var settings = AppSettings.load()
     @Published var clientSecret = ""
-    @Published var attachedImage: AttachedImage?
+    @Published var attachedImages: [AttachedImage] = []
     @Published var isSending = false
     @Published var isLoggingIn = false
 
@@ -39,7 +39,7 @@ final class ComposerModel: ObservableObject {
     }
 
     var canSend: Bool {
-        !isSending && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachedImage != nil) && remaining >= 0
+        !isSending && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachedImages.isEmpty) && remaining >= 0
     }
 
     var counterLabel: String {
@@ -111,7 +111,7 @@ final class ComposerModel: ObservableObject {
 
     func clear() {
         text = ""
-        attachedImage = nil
+        attachedImages = []
         status = .idle("Composer cleared")
     }
 
@@ -123,8 +123,7 @@ final class ComposerModel: ObservableObject {
                     url.stopAccessingSecurityScopedResource()
                 }
             }
-            attachedImage = try AttachedImage.load(from: url)
-            status = .idle("Attached \(attachedImage?.filename ?? "image")")
+            try appendImage(AttachedImage.load(from: url))
         } catch {
             status = .failure(error.localizedDescription)
         }
@@ -132,16 +131,23 @@ final class ComposerModel: ObservableObject {
 
     func attachDroppedImage(_ image: NSImage) {
         do {
-            attachedImage = try AttachedImage.load(from: image, filename: "dropped-image.png")
-            status = .idle("Attached dropped image")
+            try appendImage(AttachedImage.load(from: image, filename: "dropped-image.png"))
         } catch {
             status = .failure(error.localizedDescription)
         }
     }
 
-    func removeImage() {
-        attachedImage = nil
+    func removeImage(_ image: AttachedImage) {
+        attachedImages.removeAll { $0.id == image.id }
         status = .idle("Image removed")
+    }
+
+    private func appendImage(_ image: AttachedImage) throws {
+        guard attachedImages.count < 4 else {
+            throw XAPIError.unsupportedImage("X supports up to 4 images per post.")
+        }
+        attachedImages.append(image)
+        status = .idle("Attached \(image.filename)")
     }
 
     func applyTextStyle(_ style: ComposerTextStyle) {
@@ -151,7 +157,7 @@ final class ComposerModel: ObservableObject {
 
     func send() async {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty || attachedImage != nil else {
+        guard !body.isEmpty || !attachedImages.isEmpty else {
             status = .warning("Nothing to send")
             return
         }
@@ -176,16 +182,18 @@ final class ComposerModel: ObservableObject {
 
             let client = XAPIClient(baseURL: baseURL)
             var mediaIDs: [String] = []
-            if let attachedImage {
+            if !attachedImages.isEmpty {
                 status = .working("Uploading image...")
-                let media = try await client.uploadImage(attachedImage, accessToken: accessToken)
-                mediaIDs = [media.id]
+                for image in attachedImages {
+                    let media = try await client.uploadImage(image, accessToken: accessToken)
+                    mediaIDs.append(media.id)
+                }
             }
 
             status = .working("Sending...")
             let post = try await client.createPost(text: body, mediaIDs: mediaIDs, accessToken: accessToken)
             text = ""
-            attachedImage = nil
+            attachedImages = []
             status = .success("Posted \(post.id)")
         } catch {
             status = .failure(error.localizedDescription)
