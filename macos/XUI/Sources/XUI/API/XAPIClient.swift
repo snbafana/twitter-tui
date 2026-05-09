@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 struct XAPIClient {
@@ -119,11 +120,24 @@ struct AttachedImage: Equatable {
 
     static func load(from url: URL) throws -> AttachedImage {
         let data = try Data(contentsOf: url)
+        return try load(data: data, filename: url.lastPathComponent, mediaType: mediaType(for: url))
+    }
+
+    static func load(from image: NSImage, filename: String) throws -> AttachedImage {
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let data = bitmap.representation(using: .png, properties: [:])
+        else {
+            throw XAPIError.unsupportedImage("Dropped image could not be converted to PNG.")
+        }
+        return try load(data: data, filename: filename, mediaType: "image/png")
+    }
+
+    private static func load(data: Data, filename: String, mediaType: String) throws -> AttachedImage {
         guard data.count <= maxImageBytes else {
             throw XAPIError.unsupportedImage("Images must be 5 MB or smaller for X upload.")
         }
-        let mediaType = try mediaType(for: url)
-        return AttachedImage(filename: url.lastPathComponent, data: data, mediaType: mediaType)
+        return AttachedImage(filename: filename, data: data, mediaType: mediaType)
     }
 
     private static func mediaType(for url: URL) throws -> String {

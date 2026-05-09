@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @MainActor
@@ -124,6 +125,15 @@ final class ComposerModel: ObservableObject {
             }
             attachedImage = try AttachedImage.load(from: url)
             status = .idle("Attached \(attachedImage?.filename ?? "image")")
+        } catch {
+            status = .failure(error.localizedDescription)
+        }
+    }
+
+    func attachDroppedImage(_ image: NSImage) {
+        do {
+            attachedImage = try AttachedImage.load(from: image, filename: "dropped-image.png")
+            status = .idle("Attached dropped image")
         } catch {
             status = .failure(error.localizedDescription)
         }

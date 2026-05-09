@@ -5,6 +5,7 @@ struct ComposerView: View {
     @ObservedObject var model: ComposerModel
     var openSettings: () -> Void = {}
     @State private var showingImageImporter = false
+    @State private var isDroppingImage = false
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -117,6 +118,8 @@ struct ComposerView: View {
             .scrollContentBackground(.hidden)
             .padding(18)
             .focused($composerFocused)
+            .background(isDroppingImage ? Color.accentColor.opacity(0.08) : Color.clear)
+            .onDrop(of: [.image, .fileURL], isTargeted: $isDroppingImage, perform: handleImageDrop)
             .overlay(alignment: .topLeading) {
                 if model.text.isEmpty {
                     Text("Write the post.")
@@ -127,6 +130,49 @@ struct ComposerView: View {
                         .allowsHitTesting(false)
                 }
             }
+            .overlay {
+                if isDroppingImage {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.accentColor, lineWidth: 2)
+                        .padding(8)
+                    Text("Drop image")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.regularMaterial, in: Capsule())
+                }
+            }
+    }
+
+    private func handleImageDrop(_ providers: [NSItemProvider]) -> Bool {
+        if let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) {
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                guard let data = item as? Data,
+                      let url = URL(dataRepresentation: data, relativeTo: nil)
+                else {
+                    return
+                }
+                Task { @MainActor in
+                    model.attachImage(from: url)
+                }
+            }
+            return true
+        }
+
+        if let provider = providers.first(where: { $0.canLoadObject(ofClass: NSImage.self) }) {
+            provider.loadObject(ofClass: NSImage.self) { image, _ in
+                guard let image = image as? NSImage else {
+                    return
+                }
+                Task { @MainActor in
+                    model.attachDroppedImage(image)
+                }
+            }
+            return true
+        }
+
+        return false
     }
 
     private var footer: some View {
