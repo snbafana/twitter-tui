@@ -136,21 +136,27 @@ struct OAuthCoordinator {
 
     private func decodeTokenResponse(_ request: URLRequest) async throws -> OAuthTokenBundle {
         let (data, response) = try await URLSession.shared.data(for: request)
+        return try TokenResponseDecoder.decode(data: data, response: response)
+    }
+
+}
+
+struct TokenResponseDecoder {
+    static func decode(data: Data, response: URLResponse, now: Date = Date()) throws -> OAuthTokenBundle {
         guard let http = response as? HTTPURLResponse else {
             throw AuthError.invalidTokenResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw AuthError.tokenExchangeFailed(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            throw AuthError.tokenExchangeFailed(http.statusCode, XAPIErrorBody.message(from: data))
         }
 
         let payload = try JSONDecoder().decode(TokenResponse.self, from: data)
         return OAuthTokenBundle(
             accessToken: payload.accessToken,
             refreshToken: payload.refreshToken,
-            expiresAt: payload.expiresIn.map { Date().addingTimeInterval(TimeInterval($0)) }
+            expiresAt: payload.expiresIn.map { now.addingTimeInterval(TimeInterval($0)) }
         )
     }
-
 }
 
 struct FormURLEncoder {
