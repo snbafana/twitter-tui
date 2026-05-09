@@ -64,6 +64,10 @@ final class ComposerModel: ObservableObject {
 
     func prepareLogin() {
         do {
+            if let issue = settings.loginSetupIssue() {
+                status = .failure(issue)
+                return
+            }
             let state = oauth.makeState()
             let challenge = oauth.makeChallenge()
             _ = try oauth.authorizationURL(settings: settings, state: state, challenge: challenge)
@@ -76,6 +80,10 @@ final class ComposerModel: ObservableObject {
 
     func login() async {
         guard !isLoggingIn else {
+            return
+        }
+        if let issue = settings.loginSetupIssue() {
+            status = .failure(issue)
             return
         }
 
@@ -227,6 +235,23 @@ struct AppSettings: Equatable {
         defaults.set(clientID, forKey: Self.clientIDKey)
         defaults.set(baseURL, forKey: Self.baseURLKey)
         defaults.set(callbackURL, forKey: Self.callbackURLKey)
+    }
+
+    func loginSetupIssue() -> String? {
+        if clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Add your X OAuth Client ID in Settings before logging in."
+        }
+        guard URL(string: baseURL)?.scheme?.hasPrefix("http") == true else {
+            return "API base URL must start with http or https."
+        }
+        guard let callback = URL(string: callbackURL),
+              callback.scheme == "http",
+              callback.host == "127.0.0.1" || callback.host == "localhost",
+              callback.port != nil
+        else {
+            return "Callback URL must be http://127.0.0.1:<port>/callback or http://localhost:<port>/callback."
+        }
+        return nil
     }
 }
 
