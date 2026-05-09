@@ -11,6 +11,16 @@ cd macos/XUI
 swift run
 ```
 
+`swift run` is useful for development, but it launches a raw SwiftPM executable. For normal typing/focus behavior, build and open the app bundle instead:
+
+```bash
+cd macos/XUI
+./scripts/build-app.sh
+open build/XUI.app
+```
+
+This creates `macos/XUI/build/XUI.app`, a local foreground macOS app bundle. It is not a DMG and is not committed.
+
 ## Build and Test
 
 ```bash
@@ -31,6 +41,7 @@ swift run
 Expected first-run state:
 
 - The main window opens directly to the composer.
+- The app appears as `XUI` in the macOS app switcher and accepts keyboard focus like a normal app.
 - The header says `XUI` and `Bring your own X auth`.
 - `Settings` opens the local OAuth app settings.
 - `Log In` should fail locally until a Client ID is configured; it should not open a browser with missing setup.
