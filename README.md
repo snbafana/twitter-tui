@@ -64,7 +64,36 @@ tweet.read tweet.write users.read offline.access
 cd /Users/snbafana/Documents/personal/workspace/twitter-tui
 ```
 
-### 3. Initialize credentials
+### 3. Build and install XUI
+
+Build the release binary:
+
+```bash
+cargo build --release --bin xui
+```
+
+Install it into a user-local bin directory:
+
+```bash
+mkdir -p ~/.local/bin
+cp target/release/xui ~/.local/bin/xui
+chmod 755 ~/.local/bin/xui
+```
+
+If `~/.local/bin` is not already on your PATH, add it for zsh:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Confirm the install:
+
+```bash
+xui --version
+```
+
+### 4. Initialize credentials
 
 ```bash
 xui init --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
@@ -74,7 +103,7 @@ If your app does not use a client secret, omit `--client-secret`.
 
 This writes the local config file and preserves the user's own X API app credentials on their machine. Tokens are still created only after OAuth login.
 
-### 4. Run login
+### 5. Run login
 
 ```bash
 xui login
@@ -96,7 +125,7 @@ What happens next:
 6. The app exchanges the authorization code for an `access_token` and optional `refresh_token`.
 7. The app saves the token bundle to `~/Library/Application Support/com.codex.twitter-tui/config.toml`.
 
-### 5. Verify the login
+### 6. Verify the login
 
 ```bash
 xui doctor
@@ -104,7 +133,7 @@ xui doctor
 
 This calls `GET /2/users/me` and confirms that the saved token is a valid OAuth 2.0 user-context token.
 
-### 6. Post from the terminal
+### 7. Post from the terminal
 
 One-off post:
 
@@ -124,7 +153,7 @@ Equivalent explicit command:
 xui compose
 ```
 
-### 7. Common setup failures
+### 8. Common setup failures
 
 - The callback URL in X does not exactly match `http://127.0.0.1:8787/callback`.
 - The app is missing `tweet.write` or `users.read`.
