@@ -10,16 +10,6 @@ default-run = "xui"
 name = "twitter_tui"
 path = "src/app.rs"
 
-[package.metadata.packager]
-product-name = "XUI"
-identifier = "com.snbafana.xui"
-before-packaging-command = "cargo build --release --bin xui"
-binaries-dir = "target/release"
-out-dir = "dist"
-formats = ["app", "dmg"]
-icons = ["assets/icons/*.png"]
-binaries = [{ path = "xui", main = true }]
-
 [dependencies]
 anyhow = "1.0"
 base64 = "0.22"

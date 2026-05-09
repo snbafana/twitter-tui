@@ -16,7 +16,7 @@ use crate::config::ConfigStore;
 #[command(about = "A minimal X API v2 terminal composer using external OAuth 2.0 tokens")]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -59,7 +59,7 @@ pub fn run() -> Result<()> {
 
     let mut store = ConfigStore::load_default()?;
 
-    match cli.command {
+    match cli.command.unwrap_or(Command::Compose) {
         Command::Init {
             client_id,
             client_secret,

@@ -35,7 +35,7 @@ token_expires_at = 2026-03-11T22:00:00Z
 
 You cannot complete the entire setup from the terminal alone. X requires app creation and OAuth configuration in the web-based Developer Console first.
 
-XUI is bring-your-own-auth. The DMG ships no shared developer account, no access token, and no app secret. Each user creates an X developer app, enters that app's OAuth 2.0 Client ID and optional Client Secret locally, then authorizes their own X account through X's OAuth screen.
+XUI is bring-your-own-auth. It ships no shared developer account, no access token, and no app secret. Each user creates an X developer app, enters that app's OAuth 2.0 Client ID and optional Client Secret locally, then authorizes their own X account through X's OAuth screen.
 
 ### 1. Create an X developer app
 
@@ -115,6 +115,12 @@ xui post "hello from the terminal"
 Interactive composer:
 
 ```bash
+xui
+```
+
+Equivalent explicit command:
+
+```bash
 xui compose
 ```
 
@@ -133,6 +139,7 @@ xui --version
 xui init --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
 xui login
 xui doctor
+xui
 xui post "hello from the terminal"
 xui compose
 ```
@@ -144,11 +151,12 @@ cargo run -- --version
 cargo run -- init --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
 cargo run -- login
 cargo run -- doctor
+cargo run
 cargo run -- post "hello from the terminal"
 cargo run -- compose
 ```
 
-The legacy `twitter-tui` binary is still built for compatibility, but the packaged app and default source run target are `xui`.
+The legacy `twitter-tui` binary is still built for compatibility, but the default source run target is `xui`.
 
 ## Bring-your-own auth
 
@@ -193,29 +201,12 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-## macOS DMG
+## Release Archives
 
-This repo is configured for `cargo-packager`, which can produce a `.app` bundle and `.dmg`.
-
-One-time install:
+For distribution, build the terminal binary and attach it to a GitHub Release:
 
 ```bash
-cargo install cargo-packager --locked
+cargo build --release --bin xui
 ```
 
-Build the release artifacts:
-
-```bash
-cargo packager --release
-```
-
-The generated files land in `dist/`, which is intentionally ignored by git. For a public release, attach the `.dmg` to the matching GitHub Release tag.
-
-The packaged macOS app is named `XUI` and uses the generated icon set in `assets/icons/` as its app/DMG icon. The source logo is kept at `assets/xui-icon-source.png`.
-
-For broader distribution, use `cargo-dist` for GitHub Release archives and installer scripts, and keep `cargo-packager` for the macOS DMG:
-
-```bash
-cargo install cargo-dist --locked
-cargo dist init
-```
+The binary is `target/release/xui`.
