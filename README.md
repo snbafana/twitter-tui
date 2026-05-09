@@ -187,6 +187,19 @@ cargo run -- compose
 
 The legacy `twitter-tui` binary is still built for compatibility, but the default source run target is `xui`.
 
+## Native macOS App
+
+There is also a native SwiftUI version in `macos/XUI`. It is separate from the Rust terminal app while the native app is being brought up.
+
+Run it from the repo with:
+
+```bash
+cd macos/XUI
+swift run
+```
+
+The native app opens directly to the composer. Settings stores the X OAuth Client ID locally, stores the optional Client Secret and OAuth tokens in Keychain, uses the same localhost callback URL as the Rust CLI, and posts through the native `URLSession` API client.
+
 ## Bring-your-own auth
 
 XUI uses OAuth 2.0 Authorization Code Flow with PKCE. The user supplies only their X developer app's `Client ID` and optional `Client Secret`:
