@@ -66,6 +66,35 @@ impl ConfigStore {
         &self.settings
     }
 
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn initialize(
+        &mut self,
+        client_id: String,
+        client_secret: Option<String>,
+        base_url: Option<String>,
+        timeout_ms: Option<u64>,
+    ) -> Result<()> {
+        if self.settings.auth.client_id.as_deref() != Some(client_id.as_str()) {
+            self.settings.auth.access_token = None;
+            self.settings.auth.refresh_token = None;
+            self.settings.auth.token_expires_at = None;
+        }
+
+        self.settings.auth.client_id = Some(client_id);
+        self.settings.auth.client_secret = client_secret;
+        if let Some(base_url) = base_url {
+            self.settings.api.base_url = base_url;
+        }
+        if let Some(timeout_ms) = timeout_ms {
+            self.settings.api.timeout_ms = timeout_ms;
+        }
+
+        self.save_file()
+    }
+
     pub fn persist_auth(&mut self, auth: AuthConfig) -> Result<()> {
         self.settings.auth = auth;
         self.save_file()

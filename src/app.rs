@@ -1,7 +1,7 @@
-mod api;
-mod auth;
-mod config;
-mod tui;
+pub mod api;
+pub mod auth;
+pub mod config;
+pub mod tui;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -11,7 +11,8 @@ use crate::auth::TokenSession;
 use crate::config::ConfigStore;
 
 #[derive(Parser, Debug)]
-#[command(name = "twitter-tui")]
+#[command(name = "xui")]
+#[command(version)]
 #[command(about = "A minimal X API v2 terminal composer using external OAuth 2.0 tokens")]
 struct Cli {
     #[command(subcommand)]
@@ -20,6 +21,17 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Save local X API app credentials before running OAuth login.
+    Init {
+        #[arg(long)]
+        client_id: String,
+        #[arg(long)]
+        client_secret: Option<String>,
+        #[arg(long)]
+        base_url: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+    },
     /// Run the OAuth 2.0 PKCE login flow and save tokens locally.
     Login {
         #[arg(long)]
@@ -42,22 +54,29 @@ enum Command {
     Compose,
 }
 
-fn main() -> Result<()> {
+pub fn run() -> Result<()> {
     let cli = Cli::parse();
 
     let mut store = ConfigStore::load_default()?;
-    let api = XClient::new(
-        store.settings().api.base_url.clone(),
-        store.settings().api.timeout_ms,
-    )?;
 
     match cli.command {
+        Command::Init {
+            client_id,
+            client_secret,
+            base_url,
+            timeout_ms,
+        } => {
+            store.initialize(client_id, client_secret, base_url, timeout_ms)?;
+            println!("saved configuration to {}", store.path().display());
+            println!("next: run `xui login`, then `xui compose`");
+        }
         Command::Login {
             client_id,
             client_secret,
             redirect_uri,
             print_url,
         } => {
+            let api = api_from_store(&store)?;
             let client_id = client_id
                 .or_else(|| store.settings().auth.client_id.clone())
                 .ok_or_else(|| anyhow::anyhow!("missing client_id; pass --client-id"))?;
@@ -81,6 +100,7 @@ fn main() -> Result<()> {
             }
         }
         Command::Doctor => {
+            let api = api_from_store(&store)?;
             let mut session = TokenSession::from_auth_config(store.settings().auth.clone())?;
             let (me, auth_changed) = api.get_authenticated_user(&mut session)?;
             persist_session_if_needed(&mut store, &session, auth_changed)?;
@@ -93,6 +113,7 @@ fn main() -> Result<()> {
             }
         }
         Command::Post { text } => {
+            let api = api_from_store(&store)?;
             let mut session = TokenSession::from_auth_config(store.settings().auth.clone())?;
             let text = text.join(" ");
             let (posted, auth_changed) = api.create_post(&mut session, &text)?;
@@ -106,12 +127,20 @@ fn main() -> Result<()> {
             }
         }
         Command::Compose => {
+            let api = api_from_store(&store)?;
             let session = TokenSession::from_auth_config(store.settings().auth.clone())?;
             tui::run(api, store, session)?;
         }
     }
 
     Ok(())
+}
+
+fn api_from_store(store: &ConfigStore) -> Result<XClient> {
+    XClient::new(
+        store.settings().api.base_url.clone(),
+        store.settings().api.timeout_ms,
+    )
 }
 
 fn persist_session_if_needed(

@@ -1,4 +1,4 @@
-# twitter-tui
+# XUI
 
 Minimal terminal composer for the current X API v2.
 
@@ -35,6 +35,8 @@ token_expires_at = 2026-03-11T22:00:00Z
 
 You cannot complete the entire setup from the terminal alone. X requires app creation and OAuth configuration in the web-based Developer Console first.
 
+XUI is bring-your-own-auth. The DMG ships no shared developer account, no access token, and no app secret. Each user creates an X developer app, enters that app's OAuth 2.0 Client ID and optional Client Secret locally, then authorizes their own X account through X's OAuth screen.
+
 ### 1. Create an X developer app
 
 1. Go to [console.x.com](https://console.x.com).
@@ -62,13 +64,27 @@ tweet.read tweet.write users.read offline.access
 cd /Users/snbafana/Documents/personal/workspace/twitter-tui
 ```
 
-### 3. Run login
+### 3. Initialize credentials
 
 ```bash
-cargo run -- login --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
+xui init --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
 ```
 
 If your app does not use a client secret, omit `--client-secret`.
+
+This writes the local config file and preserves the user's own X API app credentials on their machine. Tokens are still created only after OAuth login.
+
+### 4. Run login
+
+```bash
+xui login
+```
+
+From a source checkout, use:
+
+```bash
+cargo run -- login
+```
 
 What happens next:
 
@@ -80,29 +96,29 @@ What happens next:
 6. The app exchanges the authorization code for an `access_token` and optional `refresh_token`.
 7. The app saves the token bundle to `~/Library/Application Support/com.codex.twitter-tui/config.toml`.
 
-### 4. Verify the login
+### 5. Verify the login
 
 ```bash
-cargo run -- doctor
+xui doctor
 ```
 
 This calls `GET /2/users/me` and confirms that the saved token is a valid OAuth 2.0 user-context token.
 
-### 5. Post from the terminal
+### 6. Post from the terminal
 
 One-off post:
 
 ```bash
-cargo run -- post "hello from the terminal"
+xui post "hello from the terminal"
 ```
 
 Interactive composer:
 
 ```bash
-cargo run -- compose
+xui compose
 ```
 
-### 6. Common setup failures
+### 7. Common setup failures
 
 - The callback URL in X does not exactly match `http://127.0.0.1:8787/callback`.
 - The app is missing `tweet.write` or `users.read`.
@@ -113,8 +129,93 @@ cargo run -- compose
 ## Commands
 
 ```bash
-cargo run -- login --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
+xui --version
+xui init --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
+xui login
+xui doctor
+xui post "hello from the terminal"
+xui compose
+```
+
+From source:
+
+```bash
+cargo run -- --version
+cargo run -- init --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
+cargo run -- login
 cargo run -- doctor
 cargo run -- post "hello from the terminal"
 cargo run -- compose
+```
+
+The legacy `twitter-tui` binary is still built for compatibility, but the packaged app and default source run target are `xui`.
+
+## Bring-your-own auth
+
+XUI uses OAuth 2.0 Authorization Code Flow with PKCE. The user supplies only their X developer app's `Client ID` and optional `Client Secret`:
+
+```bash
+xui init --client-id YOUR_CLIENT_ID --client-secret YOUR_CLIENT_SECRET
+xui login
+```
+
+`xui login` starts a local callback listener on `127.0.0.1:8787`, opens the X authorization URL, and waits for X to redirect back with an authorization code. XUI exchanges that short-lived code for an access token and, when `offline.access` is enabled, a refresh token. Those tokens are written only to the user's local config file.
+
+For public/native-client use, users can omit `--client-secret`:
+
+```bash
+xui init --client-id YOUR_CLIENT_ID
+```
+
+The required app scopes are:
+
+```text
+tweet.read tweet.write users.read offline.access
+```
+
+`tweet.write` is what allows posting, `users.read` is used by `doctor` and account display, and `offline.access` is what lets X issue a refresh token so the user does not have to log in again every two hours.
+
+## Versioning and releases
+
+The app version comes from `Cargo.toml`:
+
+```toml
+[package]
+version = "0.1.0"
+```
+
+`xui --version` prints that same version through Clap. To cut a release:
+
+```bash
+cargo test
+cargo clippy --all-targets -- -D warnings
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+## macOS DMG
+
+This repo is configured for `cargo-packager`, which can produce a `.app` bundle and `.dmg`.
+
+One-time install:
+
+```bash
+cargo install cargo-packager --locked
+```
+
+Build the release artifacts:
+
+```bash
+cargo packager --release
+```
+
+The generated files land in `dist/`, which is intentionally ignored by git. For a public release, attach the `.dmg` to the matching GitHub Release tag.
+
+The packaged macOS app is named `XUI` and uses the generated icon set in `assets/icons/` as its app/DMG icon. The source logo is kept at `assets/xui-icon-source.png`.
+
+For broader distribution, use `cargo-dist` for GitHub Release archives and installer scripts, and keep `cargo-packager` for the macOS DMG:
+
+```bash
+cargo install cargo-dist --locked
+cargo dist init
 ```

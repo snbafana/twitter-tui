@@ -2,6 +2,23 @@
 name = "twitter-tui"
 version = "0.1.0"
 edition = "2024"
+description = "A minimal X API v2 terminal composer using external OAuth 2.0 tokens"
+authors = ["Snbafana"]
+default-run = "xui"
+
+[lib]
+name = "twitter_tui"
+path = "src/app.rs"
+
+[package.metadata.packager]
+product-name = "XUI"
+identifier = "com.snbafana.xui"
+before-packaging-command = "cargo build --release --bin xui"
+binaries-dir = "target/release"
+out-dir = "dist"
+formats = ["app", "dmg"]
+icons = ["assets/icons/*.png"]
+binaries = [{ path = "xui", main = true }]
 
 [dependencies]
 anyhow = "1.0"
