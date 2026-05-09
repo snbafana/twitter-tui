@@ -50,6 +50,55 @@ final class XAPIClientTests: XCTestCase {
         XCTAssertEqual(post, CreatedPost(id: "42", text: "hello"))
     }
 
+    func testCreatePostCanAttachUploadedMedia() async throws {
+        let session = makeSession()
+        let client = XAPIClient(baseURL: URL(string: "https://api.x.com")!, session: session)
+
+        StubURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/2/tweets")
+            let body = try XCTUnwrap(Self.jsonBody(from: request))
+            XCTAssertEqual(body["text"] as? String, "hello")
+            let media = try XCTUnwrap(body["media"] as? [String: Any])
+            XCTAssertEqual(media["media_ids"] as? [String], ["123"])
+
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 201, httpVersion: nil, headerFields: nil)!,
+                Data(#"{"data":{"id":"42","text":"hello"}}"#.utf8)
+            )
+        }
+
+        let post = try await client.createPost(text: "hello", mediaIDs: ["123"], accessToken: "token")
+
+        XCTAssertEqual(post.id, "42")
+    }
+
+    func testUploadImageSendsBase64MediaBody() async throws {
+        let session = makeSession()
+        let client = XAPIClient(baseURL: URL(string: "https://api.x.com")!, session: session)
+        let image = AttachedImage(filename: "tiny.png", data: Data([1, 2, 3]), mediaType: "image/png")
+
+        StubURLProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.path, "/2/media/upload")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            let body = try XCTUnwrap(Self.jsonBody(from: request))
+            XCTAssertEqual(body["media"] as? String, "AQID")
+            XCTAssertEqual(body["media_category"] as? String, "tweet_image")
+            XCTAssertEqual(body["media_type"] as? String, "image/png")
+            XCTAssertEqual(body["shared"] as? Bool, false)
+
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                Data(#"{"data":{"id":"123","media_key":"3_123","expires_after_secs":86400}}"#.utf8)
+            )
+        }
+
+        let media = try await client.uploadImage(image, accessToken: "token")
+
+        XCTAssertEqual(media, UploadedMedia(id: "123", mediaKey: "3_123", expiresAfterSeconds: 86400))
+    }
+
     func testHTTPErrorUsesXErrorPayload() async throws {
         let session = makeSession()
         let client = XAPIClient(baseURL: URL(string: "https://api.x.com")!, session: session)
@@ -106,6 +155,13 @@ final class XAPIClientTests: XCTestCase {
             data.append(buffer, count: count)
         }
         return String(data: data, encoding: .utf8)
+    }
+
+    private static func jsonBody(from request: URLRequest) throws -> [String: Any]? {
+        guard let body = bodyString(from: request)?.data(using: .utf8) else {
+            return nil
+        }
+        return try JSONSerialization.jsonObject(with: body) as? [String: Any]
     }
 }
 

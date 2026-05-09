@@ -1,13 +1,17 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ComposerView: View {
     @ObservedObject var model: ComposerModel
     var openSettings: () -> Void = {}
+    @State private var showingImageImporter = false
     @FocusState private var composerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             header
+            Divider()
+            tools
             Divider()
             editor
             Divider()
@@ -52,6 +56,58 @@ struct ComposerView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
+    }
+
+    private var tools: some View {
+        HStack(spacing: 8) {
+            Button("B") {
+                model.applyTextStyle(.bold)
+            }
+            .font(.system(.callout, weight: .bold))
+            .help("Style draft as Unicode bold text")
+
+            Button("I") {
+                model.applyTextStyle(.italic)
+            }
+            .font(.system(.callout).italic())
+            .help("Style draft as Unicode italic text")
+
+            Button("Serif") {
+                model.applyTextStyle(.serif)
+            }
+            .font(.system(.callout, design: .serif))
+            .help("Style draft as Unicode serif text")
+
+            Divider()
+                .frame(height: 18)
+
+            Button(model.attachedImage == nil ? "Image" : "Replace Image") {
+                showingImageImporter = true
+            }
+
+            if let image = model.attachedImage {
+                Text("\(image.filename) · \(image.sizeLabel)")
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Button("Remove") {
+                    model.removeImage()
+                }
+            }
+
+            Spacer()
+        }
+        .font(.callout)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+        .fileImporter(isPresented: $showingImageImporter, allowedContentTypes: [.image]) { result in
+            switch result {
+            case let .success(url):
+                model.attachImage(from: url)
+            case let .failure(error):
+                model.status = .failure(error.localizedDescription)
+            }
+        }
     }
 
     private var editor: some View {

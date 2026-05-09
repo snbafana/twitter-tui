@@ -11,6 +11,7 @@ final class ComposerModel: ObservableObject {
     @Published var account: AccountSummary?
     @Published var settings = AppSettings.load()
     @Published var clientSecret = ""
+    @Published var attachedImage: AttachedImage?
     @Published var isSending = false
     @Published var isLoggingIn = false
 
@@ -37,7 +38,7 @@ final class ComposerModel: ObservableObject {
     }
 
     var canSend: Bool {
-        !isSending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && remaining >= 0
+        !isSending && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachedImage != nil) && remaining >= 0
     }
 
     var counterLabel: String {
@@ -109,12 +110,38 @@ final class ComposerModel: ObservableObject {
 
     func clear() {
         text = ""
+        attachedImage = nil
         status = .idle("Composer cleared")
+    }
+
+    func attachImage(from url: URL) {
+        do {
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessed {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            attachedImage = try AttachedImage.load(from: url)
+            status = .idle("Attached \(attachedImage?.filename ?? "image")")
+        } catch {
+            status = .failure(error.localizedDescription)
+        }
+    }
+
+    func removeImage() {
+        attachedImage = nil
+        status = .idle("Image removed")
+    }
+
+    func applyTextStyle(_ style: ComposerTextStyle) {
+        text = TextStyler.apply(style, to: text)
+        status = .idle("\(style.label) applied")
     }
 
     func send() async {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else {
+        guard !body.isEmpty || attachedImage != nil else {
             status = .warning("Nothing to send")
             return
         }
@@ -137,8 +164,18 @@ final class ComposerModel: ObservableObject {
                 return
             }
 
-            let post = try await XAPIClient(baseURL: baseURL).createPost(text: body, accessToken: accessToken)
+            let client = XAPIClient(baseURL: baseURL)
+            var mediaIDs: [String] = []
+            if let attachedImage {
+                status = .working("Uploading image...")
+                let media = try await client.uploadImage(attachedImage, accessToken: accessToken)
+                mediaIDs = [media.id]
+            }
+
+            status = .working("Sending...")
+            let post = try await client.createPost(text: body, mediaIDs: mediaIDs, accessToken: accessToken)
             text = ""
+            attachedImage = nil
             status = .success("Posted \(post.id)")
         } catch {
             status = .failure(error.localizedDescription)
@@ -282,5 +319,60 @@ struct TokenRefreshPolicy {
             return false
         }
         return expiresAt <= now.addingTimeInterval(refreshWindow)
+    }
+}
+
+enum ComposerTextStyle: CaseIterable {
+    case bold
+    case italic
+    case serif
+
+    var label: String {
+        switch self {
+        case .bold:
+            "Bold"
+        case .italic:
+            "Italic"
+        case .serif:
+            "Serif"
+        }
+    }
+}
+
+struct TextStyler {
+    static func apply(_ style: ComposerTextStyle, to text: String) -> String {
+        text.unicodeScalars.map { scalar in
+            styledScalar(scalar, style: style).map(String.init) ?? String(scalar)
+        }.joined()
+    }
+
+    private static func styledScalar(_ scalar: UnicodeScalar, style: ComposerTextStyle) -> UnicodeScalar? {
+        let value = scalar.value
+        switch style {
+        case .bold:
+            return mappedScalar(value, uppercaseStart: 0x1D400, lowercaseStart: 0x1D41A, digitStart: 0x1D7CE)
+        case .italic:
+            return mappedScalar(value, uppercaseStart: 0x1D434, lowercaseStart: 0x1D44E, digitStart: nil)
+        case .serif:
+            return mappedScalar(value, uppercaseStart: 0x1D468, lowercaseStart: 0x1D482, digitStart: nil)
+        }
+    }
+
+    private static func mappedScalar(
+        _ value: UInt32,
+        uppercaseStart: UInt32,
+        lowercaseStart: UInt32,
+        digitStart: UInt32?
+    ) -> UnicodeScalar? {
+        if (65...90).contains(value) {
+            return UnicodeScalar(uppercaseStart + value - 65)
+        }
+        if (97...122).contains(value) {
+            return UnicodeScalar(lowercaseStart + value - 97)
+        }
+        if let digitStart, (48...57).contains(value) {
+            return UnicodeScalar(digitStart + value - 48)
+        }
+        return nil
     }
 }

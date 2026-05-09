@@ -20,13 +20,25 @@ struct XAPIClient {
         return envelope.data
     }
 
-    func createPost(text: String, accessToken: String) async throws -> CreatedPost {
+    func uploadImage(_ image: AttachedImage, accessToken: String) async throws -> UploadedMedia {
+        let url = baseURL.appending(path: "/2/media/upload")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(UploadMediaBody(image: image))
+
+        let envelope: UploadMediaEnvelope = try await send(request)
+        return envelope.data
+    }
+
+    func createPost(text: String, mediaIDs: [String] = [], accessToken: String) async throws -> CreatedPost {
         let url = baseURL.appending(path: "/2/tweets")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(CreatePostBody(text: text))
+        request.httpBody = try JSONEncoder().encode(CreatePostBody(text: text, mediaIDs: mediaIDs))
 
         let envelope: CreatePostEnvelope = try await send(request)
         return envelope.data
@@ -79,22 +91,117 @@ struct CreatedPost: Decodable, Equatable {
     var text: String
 }
 
+struct UploadedMedia: Decodable, Equatable {
+    var id: String
+    var mediaKey: String?
+    var expiresAfterSeconds: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case mediaKey = "media_key"
+        case expiresAfterSeconds = "expires_after_secs"
+    }
+}
+
+struct AttachedImage: Equatable {
+    static let maxImageBytes = 5 * 1024 * 1024
+
+    var filename: String
+    var data: Data
+    var mediaType: String
+
+    var sizeLabel: String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(data.count))
+    }
+
+    static func load(from url: URL) throws -> AttachedImage {
+        let data = try Data(contentsOf: url)
+        guard data.count <= maxImageBytes else {
+            throw XAPIError.unsupportedImage("Images must be 5 MB or smaller for X upload.")
+        }
+        let mediaType = try mediaType(for: url)
+        return AttachedImage(filename: url.lastPathComponent, data: data, mediaType: mediaType)
+    }
+
+    private static func mediaType(for url: URL) throws -> String {
+        switch url.pathExtension.lowercased() {
+        case "jpg", "jpeg":
+            return "image/jpeg"
+        case "png":
+            return "image/png"
+        case "webp":
+            return "image/webp"
+        case "bmp":
+            return "image/bmp"
+        case "tif", "tiff":
+            return "image/tiff"
+        default:
+            throw XAPIError.unsupportedImage("Use JPG, PNG, WebP, BMP, or TIFF images.")
+        }
+    }
+}
+
 private struct UserEnvelope: Decodable {
     var data: AuthenticatedUser
 }
 
 private struct CreatePostBody: Encodable {
     var text: String
+    var media: CreatePostMedia?
+
+    init(text: String, mediaIDs: [String]) {
+        self.text = text
+        if mediaIDs.isEmpty {
+            self.media = nil
+        } else {
+            self.media = CreatePostMedia(mediaIDs: mediaIDs)
+        }
+    }
+}
+
+private struct CreatePostMedia: Encodable {
+    var mediaIDs: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case mediaIDs = "media_ids"
+    }
 }
 
 private struct CreatePostEnvelope: Decodable {
     var data: CreatedPost
 }
 
+private struct UploadMediaBody: Encodable {
+    var media: String
+    var mediaCategory = "tweet_image"
+    var mediaType: String
+    var shared = false
+
+    init(image: AttachedImage) {
+        self.media = image.data.base64EncodedString()
+        self.mediaType = image.mediaType
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case media
+        case mediaCategory = "media_category"
+        case mediaType = "media_type"
+        case shared
+    }
+}
+
+private struct UploadMediaEnvelope: Decodable {
+    var data: UploadedMedia
+}
+
 enum XAPIError: Error, LocalizedError {
     case invalidURL
     case invalidResponse
     case httpStatus(Int, String)
+    case unsupportedImage(String)
 
     var errorDescription: String? {
         switch self {
@@ -104,6 +211,8 @@ enum XAPIError: Error, LocalizedError {
             "Invalid X API response"
         case let .httpStatus(status, body):
             "X API request failed with \(status): \(body)"
+        case let .unsupportedImage(message):
+            message
         }
     }
 }
