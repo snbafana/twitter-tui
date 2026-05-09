@@ -128,6 +128,7 @@ struct ComposerView: View {
                         }
                     }
                     .padding(.horizontal, 18)
+                    .padding(.top, 8)
                     .padding(.bottom, 14)
                 }
             }
@@ -151,40 +152,44 @@ struct ComposerView: View {
 
     private func imageTile(_ image: AttachedImage) -> some View {
         ZStack(alignment: .topTrailing) {
-            if let preview = NSImage(data: image.data) {
-                Image(nsImage: preview)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.18))
-                    .overlay(Text("Image").foregroundStyle(.secondary))
+            ZStack(alignment: .bottomLeading) {
+                if let preview = NSImage(data: image.data) {
+                    Image(nsImage: preview)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.18))
+                        .overlay(Text("Image").foregroundStyle(.secondary))
+                }
+
+                Text(image.sizeLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(.black.opacity(0.58), in: Capsule())
+                    .padding(5)
             }
+            .frame(width: 112, height: 84)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Button {
                 model.removeImage(image)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.caption.weight(.bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 20, height: 20)
-                    .background(.black.opacity(0.72), in: Circle())
+                    .frame(width: 24, height: 24)
+                    .background(.black, in: Circle())
+                    .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                    .shadow(color: .black.opacity(0.55), radius: 3, y: 1)
             }
             .buttonStyle(.plain)
-            .padding(5)
+            .offset(x: 7, y: -7)
             .help("Remove image")
         }
-        .frame(width: 112, height: 84)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(alignment: .bottomLeading) {
-            Text(image.sizeLabel)
-                .font(.caption2)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(.black.opacity(0.58), in: Capsule())
-                .padding(5)
-        }
+        .frame(width: 126, height: 98)
     }
 
     private func handleImageDrop(_ providers: [NSItemProvider]) -> Bool {
